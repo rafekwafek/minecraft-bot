@@ -1,9 +1,6 @@
 const mineflayer = require('mineflayer');
 const http = require('http');
 
-// =========================
-// Configuration
-// =========================
 const config = {
   host: 'pixelglitch.mcsh.io',
   port: 25565,
@@ -13,12 +10,8 @@ const config = {
   viewDistance: 'tiny'
 };
 
-const password = process.env.BOT_PASSWORD;
-
-if (!password) {
-  console.error('❌ BOT_PASSWORD is not set in Abasthan Environment Variables.');
-  process.exit(1);
-}
+// nLogin password
+const password = 'MincraftArbic_7X9!Q2';
 
 // Health server for Abasthan Web Service
 const healthPort = Number(process.env.PORT || 3000);
@@ -27,7 +20,7 @@ http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Minecraft bot is running');
 }).listen(healthPort, '0.0.0.0', () => {
-  console.log(`🌐 Health server listening on port ${healthPort}`);
+  console.log(`Health server listening on port ${healthPort}`);
 });
 
 let bot = null;
@@ -47,7 +40,7 @@ function scheduleReconnect() {
 
   reconnectAttempts++;
 
-  console.log(`⏳ Reconnecting in ${delay / 1000} seconds...`);
+  console.log(`Reconnecting in ${delay / 1000} seconds...`);
 
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
@@ -55,59 +48,61 @@ function scheduleReconnect() {
   }, delay);
 }
 
+function sendLogin() {
+  if (!bot) return;
+
+  loginHandled = true;
+
+  console.log('Sending /login...');
+
+  setTimeout(() => {
+    if (bot) {
+      bot.chat(`/login ${password}`);
+    }
+  }, 500);
+}
+
+function sendRegister() {
+  if (!bot) return;
+
+  loginHandled = true;
+
+  console.log('Sending /register...');
+
+  setTimeout(() => {
+    if (bot) {
+      bot.chat(`/register ${password} ${password}`);
+    }
+  }, 500);
+}
+
 function handleNLoginMessage(text) {
   const msg = text.toLowerCase();
 
   if (
-    (msg.includes('login') ||
-      msg.includes('log in') ||
-      msg.includes('entrar')) &&
-    !loginHandled
+    msg.includes('already registered') ||
+    msg.includes('already exists')
   ) {
-    loginHandled = true;
-
-    console.log('🔐 nLogin requested login. Sending /login...');
-
-    setTimeout(() => {
-      if (bot) {
-        bot.chat(`/login ${password}`);
-      }
-    }, 500);
-
+    sendLogin();
     return;
   }
 
   if (
-    (msg.includes('register') ||
-      msg.includes('registr') ||
-      msg.includes('not registered') ||
-      msg.includes('unregistered')) &&
-    !loginHandled
+    msg.includes('not registered') ||
+    msg.includes('unregistered') ||
+    msg.includes('register') ||
+    msg.includes('registr')
   ) {
-    loginHandled = true;
-
-    console.log('📝 nLogin requested registration. Sending /register...');
-
-    setTimeout(() => {
-      if (bot) {
-        bot.chat(`/register ${password} ${password}`);
-      }
-    }, 500);
+    sendRegister();
+    return;
   }
 
   if (
-    msg.includes('already registered') &&
-    !loginHandled
+    msg.includes('login') ||
+    msg.includes('log in') ||
+    msg.includes('password')
   ) {
-    loginHandled = true;
-
-    console.log('🔐 Account already registered. Sending /login...');
-
-    setTimeout(() => {
-      if (bot) {
-        bot.chat(`/login ${password}`);
-      }
-    }, 500);
+    sendLogin();
   }
 }
 
@@ -115,7 +110,7 @@ function createBot() {
   loginHandled = false;
 
   try {
-    console.log(`🚀 Connecting to ${config.host}:${config.port}...`);
+    console.log(`Connecting to ${config.host}:${config.port}...`);
 
     bot = mineflayer.createBot({
       host: config.host,
@@ -127,60 +122,54 @@ function createBot() {
     });
 
     bot.once('login', () => {
-      console.log(`✅ Connected as ${bot.username}`);
+      console.log(`Connected as ${bot.username}`);
       reconnectAttempts = 0;
     });
 
     bot.once('spawn', () => {
-      console.log('✅ Spawned in world');
+      console.log('Spawned in world');
 
       setTimeout(() => {
         if (!bot || loginHandled) return;
 
-        console.log('🔐 Sending /login...');
-
-        bot.chat(`/login ${password}`);
+        sendLogin();
       }, 2500);
     });
 
     bot.on('messagestr', (message) => {
-      console.log(`📩 Server: ${message}`);
-      handleNLoginMessage(message);
+      console.log(`Server: ${message}`);
+
+      if (!loginHandled) {
+        handleNLoginMessage(message);
+      }
     });
 
     bot.on('chat', (username, message) => {
       if (username === bot.username) return;
 
-      console.log(`💬 ${username}: ${message}`);
-
-      if (
-        message.toLowerCase().includes('hello') ||
-        message.toLowerCase().includes('hi')
-      ) {
-        bot.chat(`Hello ${username}!`);
-      }
+      console.log(`${username}: ${message}`);
     });
 
     bot.on('kicked', (reason) => {
-      console.error(`❌ Kicked: ${JSON.stringify(reason)}`);
+      console.error(`Kicked: ${JSON.stringify(reason)}`);
 
       bot = null;
       scheduleReconnect();
     });
 
     bot.on('error', (err) => {
-      console.error(`❌ Bot error: ${err.message}`);
+      console.error(`Bot error: ${err.message}`);
     });
 
     bot.on('end', () => {
-      console.log('🔌 Connection ended');
+      console.log('Connection ended');
 
       bot = null;
       scheduleReconnect();
     });
 
   } catch (error) {
-    console.error(`❌ Failed to create bot: ${error.message}`);
+    console.error(`Failed to create bot: ${error.message}`);
 
     bot = null;
     scheduleReconnect();
@@ -188,7 +177,7 @@ function createBot() {
 }
 
 process.on('SIGINT', () => {
-  console.log('\n🛑 Shutting down bot...');
+  console.log('Shutting down bot...');
 
   if (bot) {
     bot.quit('shutdown');
@@ -198,7 +187,7 @@ process.on('SIGINT', () => {
 });
 
 process.on('SIGTERM', () => {
-  console.log('\n🛑 Shutting down bot...');
+  console.log('Shutting down bot...');
 
   if (bot) {
     bot.quit('shutdown');
@@ -207,6 +196,6 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-console.log('🚀 Starting Minecraft bot...');
+console.log('Starting Minecraft bot...');
 
 createBot();
