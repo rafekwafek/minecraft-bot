@@ -3,12 +3,15 @@
   "version": "1.0.0",
   "description": "A Minecraft server bot using mineflayer",
   "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
   "dependencies": {
-    "mineflayer": "^4.14.0",
-    "minecraft-protocol": "^1.44.1",
+    "mineflayer": "^4.37.1",
+    "minecraft-protocol": "^1.66.2",
     "minecraft-launcher-core": "^3.16.3"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=18.0.0"
   }
 }
