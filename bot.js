@@ -1,147 +1,212 @@
 const mineflayer = require('mineflayer');
-const { auth } = require('minecraft-launcher-core');
+const http = require('http');
 
+// =========================
 // Configuration
+// =========================
 const config = {
   host: 'pixelglitch.mcsh.io',
   port: 25565,
-  username: 'Onlinebot247', // Bot's in-game username
+  username: 'mincraftarbic',
   version: '1.21.11',
-  auth: 'offline', // Using offline mode for private servers
-  viewDistance: 'tiny',
-  chat: 'enabled'
+  auth: 'offline',
+  viewDistance: 'tiny'
 };
 
-let bot;
-let reconnectAttempts = 0;
-const maxReconnectAttempts = 5;
-const reconnectDelay = 5000; // Microsoft authentication
+const password = process.env.BOT_PASSWORD;
 
-async function authenticate() {
-  // No authentication needed for offline mode
-  return new Promise((resolve) => {
-    console.log('✅ Using offline mode for authentication');
-    resolve('offline-token');
-  });
-
-  /* Microsoft authentication (commented out for offline mode)
-  try {
-    const token = await auth({
-      username: config.username,
-      password: config.password,
-      authTitle: '00000000402b5328', // Minecraft Launcher Client ID
-      token: true,
-      userType: 'msa'
-    });
-    return token.access_token;
-  } catch (error) {
-    console.error('❌ Authentication failed:', error.message);
-    console.log('Please make sure your Microsoft credentials are correct.');
-    process.exit(1);
-  }
-  */
+if (!password) {
+  console.error('❌ BOT_PASSWORD is not set in Abasthan Environment Variables.');
+  process.exit(1);
 }
 
-async function createBot() {
+// Health server for Abasthan Web Service
+const healthPort = Number(process.env.PORT || 3000);
+
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Minecraft bot is running');
+}).listen(healthPort, '0.0.0.0', () => {
+  console.log(`🌐 Health server listening on port ${healthPort}`);
+});
+
+let bot = null;
+let reconnectAttempts = 0;
+let reconnectTimer = null;
+let loginHandled = false;
+
+const reconnectDelay = 5000;
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+
+  const delay = Math.min(
+    reconnectDelay * Math.pow(1.5, Math.min(reconnectAttempts, 8)),
+    300000
+  );
+
+  reconnectAttempts++;
+
+  console.log(`⏳ Reconnecting in ${delay / 1000} seconds...`);
+
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    createBot();
+  }, delay);
+}
+
+function handleNLoginMessage(text) {
+  const msg = text.toLowerCase();
+
+  if (
+    (msg.includes('login') ||
+      msg.includes('log in') ||
+      msg.includes('entrar')) &&
+    !loginHandled
+  ) {
+    loginHandled = true;
+
+    console.log('🔐 nLogin requested login. Sending /login...');
+
+    setTimeout(() => {
+      if (bot) {
+        bot.chat(`/login ${password}`);
+      }
+    }, 500);
+
+    return;
+  }
+
+  if (
+    (msg.includes('register') ||
+      msg.includes('registr') ||
+      msg.includes('not registered') ||
+      msg.includes('unregistered')) &&
+    !loginHandled
+  ) {
+    loginHandled = true;
+
+    console.log('📝 nLogin requested registration. Sending /register...');
+
+    setTimeout(() => {
+      if (bot) {
+        bot.chat(`/register ${password} ${password}`);
+      }
+    }, 500);
+  }
+
+  if (
+    msg.includes('already registered') &&
+    !loginHandled
+  ) {
+    loginHandled = true;
+
+    console.log('🔐 Account already registered. Sending /login...');
+
+    setTimeout(() => {
+      if (bot) {
+        bot.chat(`/login ${password}`);
+      }
+    }, 500);
+  }
+}
+
+function createBot() {
+  loginHandled = false;
+
   try {
-    const accessToken = await authenticate();
+    console.log(`🚀 Connecting to ${config.host}:${config.port}...`);
+
     bot = mineflayer.createBot({
       host: config.host,
       port: config.port,
       username: config.username,
-      password: config.password,
       version: config.version,
       auth: config.auth,
-      viewDistance: config.viewDistance,
-      chat: config.chat
+      viewDistance: config.viewDistance
     });
 
-    // Event handlers
     bot.once('login', () => {
-      console.log(`✅ Logged in as ${bot.username}`);
-      reconnectAttempts = 0; // Reset reconnect attempts on successful login
+      console.log(`✅ Connected as ${bot.username}`);
+      reconnectAttempts = 0;
     });
 
-    bot.on('spawn', () => {
+    bot.once('spawn', () => {
       console.log('✅ Spawned in world');
-      bot.chat('Hello! I am online and ready!');
-      
-      // Optional: Enable 3D visualization in browser (requires prismarine-viewer)
-      // mineflayerViewer(bot, { port: 3000, firstPerson: false });
+
+      setTimeout(() => {
+        if (!bot || loginHandled) return;
+
+        console.log('🔐 Sending /login...');
+
+        bot.chat(`/login ${password}`);
+      }, 2500);
+    });
+
+    bot.on('messagestr', (message) => {
+      console.log(`📩 Server: ${message}`);
+      handleNLoginMessage(message);
     });
 
     bot.on('chat', (username, message) => {
       if (username === bot.username) return;
+
       console.log(`💬 ${username}: ${message}`);
-      
-      // Example: Respond to specific messages
-      if (message.toLowerCase().includes('hello') || message.toLowerCase().includes('hi')) {
+
+      if (
+        message.toLowerCase().includes('hello') ||
+        message.toLowerCase().includes('hi')
+      ) {
         bot.chat(`Hello ${username}!`);
       }
     });
 
     bot.on('kicked', (reason) => {
-      console.log(`❌ Kicked: ${JSON.stringify(reason)}`);
-      handleReconnect();
+      console.error(`❌ Kicked: ${JSON.stringify(reason)}`);
+
+      bot = null;
+      scheduleReconnect();
     });
 
     bot.on('error', (err) => {
-      console.error('❌ Bot error:', err.message);
-      // Don't reconnect on authentication errors
-      if (err.message.includes('auth') || err.message.includes('login')) {
-        console.error('Authentication error. Please check your credentials.');
-        process.exit(1);
-      }
-      handleReconnect();
+      console.error(`❌ Bot error: ${err.message}`);
     });
 
     bot.on('end', () => {
       console.log('🔌 Connection ended');
-      handleReconnect();
-    });
 
-    // Handle server messages (like "You need to be whitelisted")
-    bot.on('message', (message) => {
-      const msg = message.toString();
-      if (msg.includes('whitelist') || msg.includes('banned') || msg.includes('kick')) {
-        console.log(`⚠️ Server message: ${msg}`);
-      }
+      bot = null;
+      scheduleReconnect();
     });
 
   } catch (error) {
-    console.error('❌ Failed to create bot:', error.message);
-    handleReconnect();
-  }
-}
+    console.error(`❌ Failed to create bot: ${error.message}`);
 
-// Handle reconnection with exponential backoff
-function handleReconnect() {
-  if (reconnectAttempts >= maxReconnectAttempts) {
-    console.error(`❌ Max reconnection attempts (${maxReconnectAttempts}) reached. Exiting...`);
-    process.exit(1);
-  }
-
-  const delay = Math.min(reconnectDelay * Math.pow(1.5, reconnectAttempts), 300000); // Cap at 5 minutes
-  reconnectAttempts++;
-  
-  console.log(`⏳ Reconnecting in ${delay/1000} seconds... (Attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
-  
-  // Clear any existing bot instance
-  if (bot) {
-    bot.end('reconnecting');
     bot = null;
+    scheduleReconnect();
   }
-  
-  setTimeout(createBot, delay);
 }
 
-// Handle process termination
 process.on('SIGINT', () => {
   console.log('\n🛑 Shutting down bot...');
-  if (bot) bot.quit('shutdown');
+
+  if (bot) {
+    bot.quit('shutdown');
+  }
+
   process.exit(0);
 });
 
-// Start the bot
+process.on('SIGTERM', () => {
+  console.log('\n🛑 Shutting down bot...');
+
+  if (bot) {
+    bot.quit('shutdown');
+  }
+
+  process.exit(0);
+});
+
 console.log('🚀 Starting Minecraft bot...');
+
 createBot();
